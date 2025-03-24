@@ -103,18 +103,7 @@ class SBFileParser(object):
             if chunk == 0x9200:
                 # если чанк == 9200, то запускаем новый parse_mod для нового чанка
                 new_mod = read_uint(self.fb)
-                # для логов
-                # log_file.write("=" * 20 + "\n")
-                # log_file.write(f"MOD: {MOD.get_mod_by_value(new_mod)}\n")
-                # log_file.write(f"Chunk: 0x{pack_ushort(chunk).hex()}\n")
-                # log_file.write(f"End address: 0x{pack_uint(chunk_end).hex()}\n")
-                # print(MOD.get_mod_by_value(new_mod))
-                # if new_mod in [MOD.DESC.value, MOD.MODL.value, MOD.MESH.value]:
                 child_mod = self.parse_mod(new_mod, chunk_end)
-                # пока непонятно как группируются данные, но у них есть структура вложенности
-                # ANIM может быть вложен в MESH, а MESH в MESH(возможно это кости?),
-                # в свою очередь все MESH вкладываются в MODL, а MODL в DESC.
-                # поэтому дочерние элементы будут вкладываться в родительские элементы в списки по модам.
                 mod.add_child_mod_in_list(f"{child_mod.mod_type}_mods_list", child_mod)
             # 4003h(**0340h) - чанк хранит имя MODа. Есть моды, без имен.
             elif chunk == 0x4003:
