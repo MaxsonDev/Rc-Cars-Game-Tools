@@ -16,7 +16,7 @@ class SBFileParser(object):
         self.fb = open(self.file_path, "rb")
         self.mods_hex_list = []
         self.mods_str_list = []
-        self.SB_DATA = None
+        self.DESC_DATA = None
 
     def get_desc_data_result(self):
         return self.DESC_DATA
@@ -77,7 +77,7 @@ class SBFileParser(object):
         except Exception as e:
             raise e
         
-    def _parse_mod(self, mod_chunk, mod_end_addres):
+    def _parse_mod(self, mod_chunk, mod_end_address):
         """
         Основная логика чтения чанков взята из оригинальной логики файла exe.
         """
@@ -131,6 +131,6 @@ class SBFileParser(object):
                     self.fb.seek(chunk_end)
 
             # если данные мода закончились, то останавливаем цикл.
-            if mod_end_addres == self.fb.tell():
+            if mod_end_address == self.fb.tell():
                 break
         return mod
