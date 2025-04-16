@@ -2,7 +2,7 @@ from struct import unpack
 from .sb_enum import MOD
 from .sb_types import get_type_mod
 from .sb_utils import read_uint, read_ushort, read_string, read_float
-from .parsers import MESH_parser
+from .parsers import MESH_parser, COLL_parser
 
 SB_FILE_SIGNATURE = 0x3801
 
@@ -16,7 +16,7 @@ class SBFileParser(object):
         self.fb = open(self.file_path, "rb")
         self.mods_hex_list = []
         self.mods_str_list = []
-        self.DESC_DATA = None
+        self.SB_DATA = None
 
     def get_desc_data_result(self):
         return self.DESC_DATA
@@ -77,7 +77,7 @@ class SBFileParser(object):
         except Exception as e:
             raise e
         
-    def _parse_mod(self, mod_chunk, mod_end_address):
+    def _parse_mod(self, mod_chunk, mod_end_addres):
         """
         Основная логика чтения чанков взята из оригинальной логики файла exe.
         """
@@ -123,6 +123,9 @@ class SBFileParser(object):
                 if mod_chunk == MOD.MESH.value:
                     mod_obj = MESH_parser(self.fb, mod, chunk, chunk_end)
                     is_success = mod_obj.parse_chunks()
+                elif mod_chunk == MOD.COLL.value:
+                    mod_obj = COLL_parser(self.fb, mod, chunk, chunk_end)
+                    is_success = mod_obj.parse_chunks()
                 # если чанк не спаршен(еще не добавлен в парсер), то флаг возвращает False.
                 # Если False, то пропускаем чанк и перемещаем указатель файла в конец чанка
                 # log_file.write(f"Chunk: 0x{pack_ushort(chunk).hex()}\n")
@@ -131,6 +134,6 @@ class SBFileParser(object):
                     self.fb.seek(chunk_end)
 
             # если данные мода закончились, то останавливаем цикл.
-            if mod_end_address == self.fb.tell():
+            if mod_end_addres == self.fb.tell():
                 break
         return mod
