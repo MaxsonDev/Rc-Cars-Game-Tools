@@ -16,7 +16,7 @@ class SBFileParser(object):
         self.fb = open(self.file_path, "rb")
         self.mods_hex_list = []
         self.mods_str_list = []
-        self.SB_DATA = None
+        self.DESC_DATA = None
 
     def get_desc_data_result(self):
         return self.DESC_DATA
