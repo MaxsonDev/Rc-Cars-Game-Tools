@@ -1,139 +1,194 @@
-from struct import unpack
 from .sb_enum import MOD
-from .sb_types import get_type_mod
-from .sb_utils import read_uint, read_ushort, read_string, read_float
-from .parsers import MESH_parser, COLL_parser
+from .sb_mods import get_type_mod
+from .sb_utils import read_uint, read_ushort, read_string, read_float, pack_uint
+from .parsers import MESH_parser, COLL_parser, HHID_parser
 
 SB_FILE_SIGNATURE = 0x3801
 
 
 class SBFileParser(object):
-    def __init__(self, file_path):
+    """
+    Парсер для .sb файлов игры Rc Cars(Недетские гонки).
+    """
+    def __init__(self, file_path, debug=False):
+        """
+        Флаг debug имеет смысл только при запуске .py файла в debug режиме в пошаговой отладке.
+        Нужно для того, чтобы для удобства можно было смотреть значения и в hex и dec значениях.
+        Не стоит использовать этот флаг при использовании парсера в других скриптах.
+        :param file_path: str
+            путь к .sb файлу
+        :param debug: bool
+            флаг для включения debug режима
+        """
         if len(file_path) == 0:
             raise RuntimeWarning('Передайте путь к .sb файлу в аргумент file_path.')
-        
         self.file_path = file_path
         self.fb = open(self.file_path, "rb")
+        self.debug = debug
         self.mods_hex_list = []
         self.mods_str_list = []
-        self.DESC_DATA = None
+        self.parsing_result = None
+        self.root_mod = None
+        self.current_MODL = None
 
-    def get_desc_data_result(self):
-        return self.DESC_DATA
+    def get_parsing_result(self):
+        return self.parsing_result
 
     def parse_file(self):     
         try:
-            signa = read_ushort(self.fb)
+            signature = read_ushort(self.fb)
             # проверяем правильность сигнатуры и является ли файл .sb файлом 
-            if signa != SB_FILE_SIGNATURE and self.file_path[-3:].upper() == ".SB":
-                # raise RuntimeError("Invalid file signature: %08d" % (magic))
-                raise RuntimeError("Неверная сигнатура файла: %08d. Либо выбран не тот файл." % (signa))
-            # спарсили заголовки
+            if signature != SB_FILE_SIGNATURE and self.file_path[-3:].upper() == ".SB":
+                raise RuntimeError(f"Неверная сигнатура файла: 0x{hex(signature)}. Либо выбран не тот файл.")
             self._parse_file_headers()
-            # возьмем чанк адреса окончания MOD
             chunk_end = read_uint(self.fb)
-            # возьмем DESC чанк
             new_mod = read_uint(self.fb)
-            self.DESC_DATA = self._parse_mod(new_mod, chunk_end)
+            self.parsing_result = self._parse_mod(new_mod, chunk_end)
         except Exception as ex:
             raise ex
         finally:
             self.fb.close()
 
     def _parse_file_headers(self):
+        """
+        Функция парсит заголовки SB файла. Проверяет их целостность.
+        Собирает значения MOD в строковом и hex представлении и добавляет
+        в списки self.mods_str_list и self.mods_hex_list.
+        """
         try:
-            # По идее заголовки закономерны, но стоит проверить на целосттность. Малоли длина байт разная.
-            # Поэтому можно пошагово прописать функцию. 
-            # читаем адрес следующего чанка и преходим к нему
             new_cursor = read_uint(self.fb)
             self.fb.seek(new_cursor)
-            # следующим чанком должен быть 4802h(**0248h). Текстовый заголовок. Проверям.
             chunk = read_ushort(self.fb)
+            # Первым чанком должен быть текстовый заголовок 4802h(**0248h).
             if chunk != 0x4802:
-                raise Exception({"invalid_chunk": "0x4802"})
-            # чанк совпал. пропустим его. он не важен. берем указатель на следующий чанк и переходим.
+                raise Exception(f"Ошибка. Ожидаемый чанк заголовок 4802h")
+            # Данные из чанка 4802h(**0248h) нам не нужны. Пропустим их.
             new_cursor = read_uint(self.fb)
             self.fb.seek(new_cursor)
-            # вот тут уже надо собрать все MOD, чтобы знать какие моды используются в файле и проводить с ними проверку,
-            # дабы не прочесть что-то не так по ошибке при парсинге.
-            # MOD - непонятно что подразумевается под MOD, поэтом называю модуль.
-            # Пример MOD: MOD_MESH, MOD_CAMERA и т.д.
-            # 9A00h(**009Ah) чанк инициализации модуля .
-            # собирем MODs
+            # Соберем MODs в заголовках файла
+            # MOD инициализируется чанком 9A00h
             while True:
                 chunk = read_ushort(self.fb)
                 if chunk != 0x9A00:
                     break
-                    # raise Exception({"invalid_chunk": "0x9A00"})
                 new_cursor = read_uint(self.fb)
-                # modb = read_uint(self.fb)
-                modb = self.fb.read(4)
-                self.mods_hex_list.append(unpack("I", modb)[0])
-                # для просмотра при дебаге. можно убрать этот список
-                self.mods_str_list.append(modb[::-1].decode('cp437'))
-                # проверим следующий чанк.
-                # если не равен 9A00h, значит все MOD собраны
+                modb = read_uint(self.fb)
+                self.mods_hex_list.append(modb)
+                self.mods_str_list.append(MOD.get_mod_by_value(modb))
                 self.fb.seek(new_cursor)
         except Exception as e:
             raise e
         
-    def _parse_mod(self, mod_chunk, mod_end_addres):
+    def _parse_mod(self, mod_chunk, mod_end_address):
         """
-        Основная логика чтения чанков взята из оригинальной логики файла exe.
+        Функция парсинга sb файла базируется на оригинальной фунцкии в RcCars.exe файла!
+        Т.к. .sb файл имеет древовидную структуру данных, то парсинг происходит в
+        "рекурсивном цикле". Т.е. функция _parse_mod вызывает саму себя, если внутри
+        MOD находятся новые дочерние MOD.
+
+        Найденный чанк с данными спрева сверяется с общими чанками для всех MOD, такие как 9200h, 3408h, 4003h и т.д.
+        Если чанк не является общим, то сверяем чанк с чанками MODа.
+
+        Т.к. не обо всех чанках всё известно, дабы не словить ошибку или поврежденные данные,
+        все парсеры возвращают флаг is_success. Стандартное значение флага False.
+        Если флаг остается False, то о данных ничего не известно и их надо пропустить,
+        прыгнув на конец данных chunk_end.
+
+        ** - отображение чанков в .sb файле. Для более удобного чтения.
+
+        :param mod_chunk: int
+            значение MOD в числовом представлении
+        :param mod_end_address: int
+            указатель на адрес, где данные MOD заканчиваются
         """
-        # возьмем класс MODа
-        mod = get_type_mod(mod_chunk)
+        # Возьмем объект MODа
+        mod_obj = get_type_mod(mod_chunk)
+        # Добавим в self.root_mod корневой мод, если его нет.
+        if self.root_mod is None:
+            self.root_mod = mod_obj
+        # Будем добавлять ссылку на корневой объект во все объекты MOD
+        mod_obj.root_mod = self.root_mod
+        # зададим start_address - от текущего положения отнимем 10 байт
+        mod_obj.start_address = self.fb.tell() - 10
+        # зададим end_address
+        mod_obj.end_address = mod_end_address
+        self._update_mod_counters(mod_obj)
         while True:
-            # берём чанк и сверяем с одним из общих чанков
             chunk = read_ushort(self.fb)
-            # берем адрес конца чанка
             chunk_end = read_uint(self.fb)
-            # 9200h(**0092h) - чанк инициализирует новый MOD.
+            # 9200h(**0092h) - создает новый MOD.
             if chunk == 0x9200:
-                # если чанк == 9200, то запускаем новый parse_mod для нового чанка
+                # рекурсивно запускаем новый self._parse_mod для нового MOD
                 new_mod = read_uint(self.fb)
                 child_mod = self._parse_mod(new_mod, chunk_end)
-                mod.add_child_mod_in_list(f"{child_mod.mod_type}_mods_list", child_mod)
-            # 4003h(**0340h) - чанк хранит имя MODа. Есть моды, без имен.
+                mod_obj.add_child_mod_in_list(child_mod.mod_type, child_mod)
+            # 4003h(**0340h) - хранит имя MODа. Не все MOD имеют имя.
             elif chunk == 0x4003:
-                mod.name = read_string(self.fb)
-            # 540Bh(**0B54h) - чанк хранит данные о трансформации MODа в 3D пространстве.
-            # Положение[3 float], масштаб[3 float], вращение[3 float]. Все группы данных из 3х float хранят информацию об осях 
-            # в таком порядке: XZY.
+                # можно потом добавить проверку на максимально допустимую длину строки
+                name = read_string(self.fb)
+                mod_obj.add_new_attribute('data_4003h', name)
+            # 540Bh(**0B54h) - хранит данные о трансформации MODа в 3D пространстве.
+            # Положение[3 float], масштаб[3 float], вращение[3 float].
+            # Все группы данных из 3х float, УСЛОВНО, хранят информацию об осях в таком порядке: XZY.
+            # Имеет статичную контрольную сумму DWORD - 9.
             elif chunk == 0x540B:
-                # читаем общее количество флоат. Дб 9.
                 float_count = read_uint(self.fb)
                 if float_count != 9:
-                    raise 'ОШИБКА. Ожидаемое значение 9'
-                d = {}
-                d["location"] = [read_float(self.fb) for _ in range(3)]
-                d["scale"] = [read_float(self.fb) for _ in range(3)]
-                d["rotation"] = [read_float(self.fb) for _ in range(3)]
-                mod.transform = d
-            # 3408h(**0834h) - чанк хранит аргументы мода. Обязательный чанк количества DWORD аргументов - 5.
+                    raise Exception('ОШИБКА. Ожидаемое значение 9')
+                data = [[read_float(self.fb) for _ in range(3)] for _ in range(3)]
+                mod_obj.add_new_attribute('data_540Bh', data)
+            # 3408h(**0834h) - хранит аргументы MOD. Всего 5 DWORD(4 байта) аргументов.
+            # Это может быть как число, к примеру 1ый DWORD аргумент в MESH и GLTX хранит их ID.
+            # Или может быть битовой маской, к примеру 3ий аргумент в MESH, который хранит битовые флаги для включения
+            # выключения коллизии, отрисовки и т.д.
+            # Имеет статичную контрольную сумму DWORD - 5.
             elif chunk == 0x3408:
                 dword_args_length = read_uint(self.fb)
                 if dword_args_length != 5:
-                    raise 'ОШИБКА. Ожидаемое значение 5'
-                mod.dword_args_list = [read_uint(self.fb) for _ in range(5)]
+                    raise Exception('ОШИБКА. Ожидаемое значение 5')
+                data = []
+                for _ in range(5):
+                    var = read_uint(self.fb)
+                    if self.debug:
+                        d = {
+                            'dec': var,
+                            'hex': f"0x{pack_uint(var).hex()}"
+                        }
+                    else:
+                        d = var
+                    data.append(d)
+                mod_obj.add_new_attribute('data_3408h', data)
             else:
-                # если чанк не является общим чанком - ищем чанк в чанках мода.
-                # каждый парсер возвращает флаг is_success. Если чанк спаршен, то чанк возвращает флаг True.
+                # если чанк не является общим чанком - ищем чанк в чанках MOD.
                 is_success = False
                 if mod_chunk == MOD.MESH.value:
-                    mod_obj = MESH_parser(self.fb, mod, chunk, chunk_end)
-                    is_success = mod_obj.parse_chunks()
+                    mod_parser = MESH_parser(self.fb, mod_obj, chunk, chunk_end, self.debug)
+                    is_success = mod_parser.parse_chunks()
                 elif mod_chunk == MOD.COLL.value:
-                    mod_obj = COLL_parser(self.fb, mod, chunk, chunk_end)
-                    is_success = mod_obj.parse_chunks()
-                # если чанк не спаршен(еще не добавлен в парсер), то флаг возвращает False.
-                # Если False, то пропускаем чанк и перемещаем указатель файла в конец чанка
-                # log_file.write(f"Chunk: 0x{pack_ushort(chunk).hex()}\n")
-                # log_file.write(f"End address: 0x{pack_uint(chunk_end).hex()}\n")
+                    mod_parser = COLL_parser(self.fb, mod_obj, chunk, chunk_end, self.debug)
+                    is_success = mod_parser.parse_chunks()
+                elif mod_chunk == MOD.HHID.value:
+                    mod_parser = HHID_parser(self.fb, mod_obj, chunk, chunk_end, self.debug)
+                    is_success = mod_parser.parse_chunks()
                 if is_success is False:
                     self.fb.seek(chunk_end)
-
-            # если данные мода закончились, то останавливаем цикл.
-            if mod_end_addres == self.fb.tell():
+            if mod_end_address == self.fb.tell():
                 break
-        return mod
+        return mod_obj
+
+    def _update_mod_counters(self, mod_obj):
+        """
+        Функция обновляет счетчики в MODL.
+        Считает общее количество текстур GLTX и мешей MESH.
+        В будущем функция будет либо обновлятся, к примеру для подсчета количества кадров ANIM в MESH.
+        Или же лучше будет написать отдельную функцию, как в RcCars.exe, которая рекурсивно считает кол-во объектов.
+        :param mod_obj: Объект MOD
+        :return:
+        """
+        # сохраним объект MODL в self переменную, чтобы обновлять счетчик MESH и GLTX
+        if mod_obj.mod_type == 'MODL':
+            self.current_MODL = mod_obj
+        elif mod_obj.mod_type == 'MESH':
+            self.current_MODL.MESH_count += 1
+        elif mod_obj.mod_type == 'GLTX':
+            self.current_MODL.GLTX_count += 1
