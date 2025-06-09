@@ -39,7 +39,7 @@ class MOD(Enum):
     def get_value_by_mod(cls, mod_name):
         if mod_name == 0000 or mod_name == "OOOO":
             return cls.OOOO.value
-
         for mod in cls.__iter__():
             if mod.name == mod_name:
                 return mod.value
+        return None
