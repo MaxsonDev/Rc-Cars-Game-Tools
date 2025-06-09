@@ -417,21 +417,6 @@ class HHID_Mod(SuperMod):
             if x_vox - 1 == point[0] and z_vox - 1 == point[1] and y_vox - 1 == point[2]:
                 return data_8094h
         return None
-        
-    def test_search_vox_data_by_id(self, x_vox, z_vox, y_vox):
-        """
-        Тестовая функция
-        :param x_vox:
-        :param z_vox:
-        :param y_vox:
-        :return:
-        """
-        data_8094h_list = self.get_data_by_chunk('8094h')
-        for data_8094h in data_8094h_list:
-            point = data_8094h['xzy_vox_point']
-            if x_vox - 1 == point[0] and z_vox - 1 == point[1] and y_vox - 1 == point[2]:
-                return data_8094h
-        return None
 
 
 class COLL_Mod(SuperMod):
