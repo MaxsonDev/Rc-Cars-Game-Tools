@@ -100,7 +100,7 @@ class COLL_parser:
                 # оригинальная ошибка
                 raise Exception(f'Wrong chunk MODB_COLL_STARTVOX length ({f"0x{pack_uint(control_var).hex()}"} expected, {f"0x{pack_uint(control_sum).hex()}"} read)')
             self.mod_obj.add_new_attribute('data_809Dh', data)
-        # 809Ch(9C80h) - хранит список MESH_ID. Подробнее об этом чанке смотри в 809Dh.
+        # 809Ch(**9C80h) - хранит список MESH_ID. Подробнее об этом чанке смотри в 809Dh.
         elif self.chunk == 0x809C:
             try:
                 if len(self.mod_obj.data_809Dh) == 0:
@@ -146,7 +146,7 @@ class COLL_parser:
                     d = var
                 data.append(d)
             self.mod_obj.add_new_attribute('data_349Fh', data)
-        # 1500h(0015h) - хранит список битовых масок для каждого FACE. Подробнее об этом чанке смотри в 809Dh.
+        # 1500h(**0015h) - хранит список битовых масок для каждого FACE. Подробнее об этом чанке смотри в 809Dh.
         elif self.chunk == 0x1500:
             try:
                 if bool(self.mod_obj.data_309Eh) is False:
@@ -196,13 +196,13 @@ class COLL_parser:
             if control_sum != dword_var:
                 # оригинальная ошибка
                 raise Exception(f"Wrong chunk MODB_COLL_PERFACE_INFO length ({dword_var} expected, {control_sum} read)")
-        # 7099h(9970h) - чанк неизвестен. Вызывает tiohbReadPoint3D. Создает 3D точку.
+        # 7099h(**9970h) - чанк неизвестен. Вызывает tiohbReadPoint3D. Создает 3D точку.
         # Является стартовой точкой для создания матрицы.
         # Вместе с 709Ah создает зону для расчета машинки в пространстве матрицы.
         elif self.chunk == 0x7099:
             point3D = [read_float(self.fb) for _ in range(3)]
             self.mod_obj.add_new_attribute('data_7099h', point3D)
-        # 709Ah(9A70h) - чанк неизвестен. Вызывает tiohbReadPoint3D. Создает 3D точку.
+        # 709Ah(**9A70h) - чанк неизвестен. Вызывает tiohbReadPoint3D. Создает 3D точку.
         # Вместе с 7099h создает зону для расчета машинки в пространстве матрицы.
         elif self.chunk == 0x709A:
             point3D = [read_float(self.fb) for _ in range(3)]
@@ -215,41 +215,4 @@ class COLL_parser:
                 self.mod_obj.__setattr__('unknown_chunk', list())
             self.mod_obj.__getattribute__('unknown_chunk').append(self.chunk)
             is_success = False
-        return is_success
-from ..sb_utils import read_uint, read_float, read_ushort, pack_uint, pack_ushort, pack_float
-
-
-class COLL_parser:
-    """
-    chunk и chunk_end передаются из метода SBFileParser.parse_mod()
-    """
-    def __init__(self, fb, mod_obj, chunk, chunk_end):
-        self.fb = fb
-        self.mod_obj = mod_obj
-        self.chunk = chunk
-        self.chunk_end = chunk_end
-
-    def parse_chunks(self):
-        is_success = True
-        # 3498h(9834h) - чанк неизвестен. Вызывает tiohbReadDWord 3 раза. Хранит 3 "переменные", которые используются в последубщих чанках.
-        if self.chunk == 0x3498:
-            # пропустим обязательный DWORD
-            self.fb.read(4)
-            _vars = []
-            for _ in range(3):
-                var = read_uint(self.fb)
-                d = {
-                    'dec': var,
-                    'hex': f"0x{pack_uint(var).hex()}"
-                }
-                _vars.append(d)
-            self.mod_obj.add_new_attribute('vars_3498h', _vars)
-        # 309Eh(9E30h) - чанк неизвестен. Вызывает tiohbReadDWord. Хранит количесвто едениц для коллизий? VOX - воксели?
-        elif self.chunk == 0x309E:
-            var = read_uint(self.fb)
-            d = {
-                'dec': var,
-                'hex': f"0x{pack_uint(var).hex()}"
-            }
-            self.mod_obj.add_new_attribute('var_309Eh', d)
         return is_success
